@@ -1,0 +1,19 @@
+#-*- coding: utf-8 -*-
+
+# Archivos de base de datos
+*.db
+*.db-journal
+
+# Entorno virtual
+.venv/
+
+# Archivos de caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de configuración local
+config.json
+
+# Archivos de caché de la aplicación
+.photo_cache.json.migrated

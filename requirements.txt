@@ -1,0 +1,11 @@
+customtkinter
+Pillow
+pyproj
+tkcalendar
+piexif
+openpyxl
+psycopg2-binary
+flask
+flask-cors
+waitress
+bcrypt

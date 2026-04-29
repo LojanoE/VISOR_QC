@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor de Fotos Georreferenciadas</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+    <!-- Tabs -->
+    <div class="tab-bar">
+        <button class="tab-btn active" data-tab="map">Mapa y Fotos</button>
+        <button class="tab-btn" data-tab="config">Configuración</button>
+        <div style="flex:1"></div>
+        <span class="user-info">{{ session.get('user', '') }}</span>
+        <a href="/logout" class="btn btn-secondary" style="padding:6px 14px;font-size:13px;text-decoration:none;margin-right:8px;">Cerrar Sesión</a>
+    </div>
+
+    <!-- Tab: Map -->
+    <div id="tab-map" class="tab-content active">
+        <div class="main-layout">
+            <!-- Sidebar: Filters -->
+            <div class="sidebar" id="sidebar">
+                <div class="sidebar-section">
+                    <h3>Datos</h3>
+                    <div class="data-path" id="photos-folder-display" title="">Sin carpeta seleccionada</div>
+                    <button id="btn-reload" class="btn btn-secondary" onclick="reloadCache()">Recargar / Sincronizar</button>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Filtros</h3>
+
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="use-date-filter" onchange="onDateFilterToggle()">
+                        Filtrar por fecha
+                    </label>
+                    <div id="date-fields" class="date-fields hidden">
+                        <label>Desde:</label>
+                        <input type="date" id="date-from" onchange="applyFilters()">
+                        <label>Hasta:</label>
+                        <input type="date" id="date-to" onchange="applyFilters()">
+                    </div>
+
+                    <label>Turno:</label>
+                    <select id="shift-filter" onchange="applyFilters()">
+                        <option value="Ambos">Ambos</option>
+                        <option value="Diurno">Diurno (7:00-19:00)</option>
+                        <option value="Nocturno">Nocturno (19:00-7:00)</option>
+                    </select>
+
+                    <div id="filter-widgets"></div>
+
+                    <div class="filter-actions">
+                        <button class="btn btn-primary" onclick="applyFilters()">Aplicar</button>
+                        <button class="btn btn-danger" onclick="clearFilters()">Limpiar</button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section count-section">
+                    <strong id="photo-count">Fotos en el mapa: 0</strong>
+                    <div id="scan-progress-bar" class="progress-bar hidden">
+                        <div class="progress-fill" id="scan-progress-fill"></div>
+                    </div>
+                    <div id="scan-message" class="scan-message hidden"></div>
+                </div>
+            </div>
+
+            <!-- Toggle sidebar on mobile -->
+            <button id="sidebar-toggle" onclick="toggleSidebar()">&#9776;</button>
+
+            <!-- Map -->
+            <div class="map-container">
+                <div class="map-toolbar">
+                    <button class="toolbar-btn" onclick="mapObj.zoomIn()" title="Acercar">+</button>
+                    <button class="toolbar-btn" onclick="mapObj.zoomOut()" title="Alejar">&minus;</button>
+                    <button class="toolbar-btn" onclick="resetZoom()" title="Zoom original">1:1</button>
+                    <button class="toolbar-btn action-btn" onclick="exportExcel()" title="Exportar Listado Excel">Excel</button>
+                    <button class="toolbar-btn action-btn" onclick="exportTable()" title="Exportar Tabla Excel">Tabla</button>
+                    <button class="toolbar-btn action-btn" onclick="openDocuments()" title="Explorar Documentos">ROD</button>
+                </div>
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab: Config -->
+    <div id="tab-config" class="tab-content">
+        <div class="config-container">
+            <h2>Configuración</h2>
+
+            <div class="config-group">
+                <label>Imagen del Mapa:</label>
+                <input type="text" id="cfg-map-image" placeholder="Ruta de la imagen del mapa" />
+                <button class="btn btn-secondary" onclick="browsePath('cfg-map-image', 'file')">Seleccionar</button>
+            </div>
+
+            <div class="config-group">
+                <label>Archivo de Coordenadas:</label>
+                <input type="text" id="cfg-coords-file" placeholder="Ruta del archivo de coordenadas" />
+                <button class="btn btn-secondary" onclick="browsePath('cfg-coords-file', 'file')">Seleccionar</button>
+            </div>
+
+            <div class="config-group">
+                <label>Carpeta de Fotos:</label>
+                <input type="text" id="cfg-photos-folder" placeholder="Ruta de la carpeta de fotos" />
+                <button class="btn btn-secondary" onclick="browsePath('cfg-photos-folder', 'dir')">Seleccionar</button>
+            </div>
+
+            <div class="config-group">
+                <label>Carpeta de Documentos:</label>
+                <input type="text" id="cfg-docs-folder" placeholder="Ruta de la carpeta de documentos" />
+                <button class="btn btn-secondary" onclick="browsePath('cfg-docs-folder', 'dir')">Seleccionar</button>
+            </div>
+
+            <button class="btn btn-primary" onclick="saveConfig()" style="margin-top:16px;">Guardar Configuración</button>
+
+            <hr style="border-color: #0f3460; margin: 24px 0 16px 0;">
+
+            <h2>Gestión de Usuarios</h2>
+
+            <div id="users-list-container">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Usuario</th>
+                            <th>Fecha Creación</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-tbody">
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="user-create-form">
+                <h3 style="color:#4fc3f7; margin-bottom:8px;">Nuevo Usuario</h3>
+                <div class="user-form-row">
+                    <input type="text" id="new-username" placeholder="Nombre de usuario" />
+                    <input type="password" id="new-password" placeholder="Contraseña" />
+                    <button class="btn btn-primary" onclick="createUser()">Crear</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Browse modal -->
+        <div id="browse-modal" class="modal hidden">
+            <div class="modal-content browse-modal-content">
+                <div class="modal-header">
+                    <h3 id="browse-modal-title">Seleccionar ruta</h3>
+                    <button class="modal-close" onclick="closeBrowseModal()">&times;</button>
+                </div>
+                <div class="browse-path-bar">
+                    <input type="text" id="browse-current-path" readonly />
+                    <button class="btn btn-secondary" onclick="browseGoUp()">Subir</button>
+                </div>
+                <div class="browse-list" id="browse-list"></div>
+                <div class="browse-footer">
+                    <button class="btn btn-primary" onclick="confirmBrowse()">Seleccionar</button>
+                    <button class="btn btn-secondary" onclick="closeBrowseModal()">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Photo viewer modal -->
+    <div id="photo-modal" class="modal hidden">
+        <div class="modal-content photo-modal-content">
+            <div class="photo-viewer">
+                <div class="photo-image-container">
+                    <img id="photo-modal-img" src="" alt="Foto" />
+                </div>
+                <div class="photo-details">
+                    <h3>Detalles de la Imagen</h3>
+                    <div class="photo-details-scroll" id="photo-details-list"></div>
+                    <div class="photo-actions">
+                        <button id="btn-prev" class="btn btn-secondary" onclick="navigatePhoto(-1)">&lt; Anterior</button>
+                        <button id="btn-download" class="btn btn-secondary" onclick="downloadPhoto()">Descargar</button>
+                        <button id="btn-edit" class="btn btn-primary" onclick="openMetadataEditor()">Editar Metadatos</button>
+                        <button id="btn-next" class="btn btn-secondary" onclick="navigatePhoto(1)">Siguiente &gt;</button>
+                    </div>
+                </div>
+            </div>
+            <button class="modal-close photo-modal-close" onclick="closePhotoModal()">&times;</button>
+        </div>
+    </div>
+
+    <!-- Metadata editor modal -->
+    <div id="metadata-modal" class="modal hidden">
+        <div class="modal-content metadata-modal-content">
+            <div class="modal-header">
+                <h3>Editar Metadatos</h3>
+                <button class="modal-close" onclick="closeMetadataEditor()">&times;</button>
+            </div>
+            <div class="metadata-form">
+                <label>Frente de Trabajo:</label>
+                <input type="text" id="meta-work-front" />
+                <label>Coronamiento:</label>
+                <input type="text" id="meta-coronation" />
+                <label>Actividad Realizada:</label>
+                <input type="text" id="meta-activity" />
+                <label>Categoría de Observación:</label>
+                <input type="text" id="meta-category" />
+            </div>
+            <div class="metadata-actions">
+                <button class="btn btn-primary" onclick="saveMetadata()">Guardar Cambios</button>
+                <button class="btn btn-danger" onclick="closeMetadataEditor()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change password modal -->
+    <div id="change-password-modal" class="modal hidden">
+        <div class="modal-content metadata-modal-content">
+            <div class="modal-header">
+                <h3>Cambiar Contraseña</h3>
+                <button class="modal-close" onclick="closeChangePasswordModal()">&times;</button>
+            </div>
+            <div class="metadata-form">
+                <p style="color:#a0a0a0; font-size:13px;">Cambiando contraseña para: <strong id="change-password-username"></strong></p>
+                <label>Nueva Contraseña:</label>
+                <input type="password" id="change-password-new" />
+                <label>Confirmar Contraseña:</label>
+                <input type="password" id="change-password-confirm" />
+            </div>
+            <div class="metadata-actions">
+                <button class="btn btn-primary" onclick="saveNewPassword()">Guardar</button>
+                <button class="btn btn-secondary" onclick="closeChangePasswordModal()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Documents modal -->
+    <div id="docs-modal" class="modal hidden">
+        <div class="modal-content docs-modal-content">
+            <div class="modal-header">
+                <h3>Explorador de Documentos</h3>
+                <button class="modal-close" onclick="closeDocsModal()">&times;</button>
+            </div>
+            <div id="docs-list" class="docs-list"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
